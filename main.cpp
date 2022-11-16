@@ -8,67 +8,84 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 #define SERVER_PORT 8888
+#define SERVER_IP "192.168.6.110"
 #define BUFF_LEN 1024
-int server_fd=0;
 
+int fd; struct sockaddr* dst;
 pthread_t tid[2];
 
-void *doSomeThing(void *arg) {
-    sleep(5);
-    unsigned long i = 0;
-    pthread_t id = pthread_self();
+void *receiveTask(void *arg) {
+    socklen_t len;
+    struct sockaddr_in src;
+    while(1)
+    {
+        char buf[BUFF_LEN] = "TEST UDP MSG!\n";
+        printf("server:%s\n",buf);
+        recvfrom(fd, buf, BUFF_LEN, 0, (struct sockaddr*)&src, &len);  //接收来自server的信息
+        printf("server:%s\n",buf);
 
-    if (pthread_equal(id, tid[0])) {
-        printf("\n First thread processing\n");
-    } else {
-        printf("\n Second thread processing\n");
     }
-
-    for (i = 0; i < (0xFFFFFFFF); i++);
-
+    return NULL;
+}
+void *sendTask(void *arg) {
+    socklen_t len;
+    struct sockaddr_in src;
+    while(1)
+    {
+        char buf[BUFF_LEN] = "TEST UDP MSG!\n";
+        len = sizeof(*dst);
+        printf("client:%s\n",buf);  //打印自己发送的信息
+        sendto(fd, buf, BUFF_LEN, 0, dst, len);
+        memset(buf, 0, BUFF_LEN);
+        sleep(1);
+    }
     return NULL;
 }
 
-int main(void) {
-    int i = 0;
-    int err;
 
-    while (i < 2) {
-        err = pthread_create(&(tid[i]), NULL, &doSomeThing, NULL);
-        if (err != 0)
-            printf("\ncan't create thread :[%s]", strerror(err));
-        else
-            printf("\n Thread created successfully\n");
 
-        i++;
-    }
 
-    int ret;
-    struct sockaddr_in ser_addr;
 
-    server_fd = socket(AF_INET, SOCK_DGRAM, 0); //AF_INET:IPV4;SOCK_DGRAM:UDP
-    if (server_fd < 0) {
+
+
+
+
+
+int main(int argc, char* argv[])
+{
+
+    int client_fd;
+    struct sockaddr_in ser_addr,sin;
+
+    client_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if(client_fd < 0)
+    {
         printf("create socket fail!\n");
         return -1;
     }
 
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = htonl(INADDR_ANY);
+    sin.sin_port = htons(SERVER_PORT);
+
+    bind(client_fd, (struct sockaddr *)&sin, sizeof(sin));
+
     memset(&ser_addr, 0, sizeof(ser_addr));
     ser_addr.sin_family = AF_INET;
-    ser_addr.sin_addr.s_addr = htonl(INADDR_ANY); //IP地址，需要进行网络序转换，INADDR_ANY：本地地址
-    ser_addr.sin_port = htons(SERVER_PORT);  //端口号，需要网络序转换
+    ser_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+    ser_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    ser_addr.sin_port = htons(SERVER_PORT);
+    fd=client_fd;
+    dst= (struct sockaddr*)&ser_addr;
+    pthread_create(&(tid[0]), NULL, &receiveTask, NULL);
+    pthread_create(&(tid[1]), NULL, &sendTask, NULL);
 
-    ret = bind(server_fd, (struct sockaddr *) &ser_addr, sizeof(ser_addr));
-    if (ret < 0) {
-        printf("socket bind fail!\n");
-        return -1;
-    }else{
-        printf("socket bind suceess!\n");
-    }
-
-    while (1) {
+    while(1){
         sleep(1);
     }
+
     return 0;
 }
